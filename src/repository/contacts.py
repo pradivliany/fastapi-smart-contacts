@@ -2,15 +2,17 @@ import calendar
 from datetime import date, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Contact
-from src.schemas.schemas import ContactCreate, ContactEmailUpdate, ContactUpdate
+from src.schemas.contact_schemas import ContactCreate, ContactEmailUpdate, ContactUpdate
 
 
-async def create_contact(body: ContactCreate, db: Session) -> Contact:
-    existing_email = db.query(Contact).filter(Contact.email == str(body.email)).first()
+async def create_contact(body: ContactCreate, db: AsyncSession) -> Contact:
+    result = await db.execute(select(Contact).where(Contact.email == str(body.email)))
+    existing_email = result.scalar_one_or_none()
+
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already existing"
@@ -26,33 +28,37 @@ async def create_contact(body: ContactCreate, db: Session) -> Contact:
     )
 
     db.add(contact)
-    db.commit()
-    db.refresh(contact)
-
+    await db.commit()
+    await db.refresh(contact)
     return contact
 
 
-async def read_contacts(skip: int, limit: int, db: Session) -> list[Contact]:
-    return db.query(Contact).offset(skip).limit(limit).all()
+async def read_contacts(skip: int, limit: int, db: AsyncSession) -> list[Contact]:
+    result = await db.execute(select(Contact).offset(skip).limit(limit))
+    contacts = list(result.scalars().all())
+    return contacts
 
 
-async def read_contact(contact_id: int, db: Session) -> Contact | None:
-    return db.query(Contact).filter(Contact.id == contact_id).first()
+async def read_contact(contact_id: int, db: AsyncSession) -> Contact | None:
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    return result.scalar_one_or_none()
 
 
 async def update_contact(
-    body: ContactUpdate, contact_id: int, db: Session
+    body: ContactUpdate, contact_id: int, db: AsyncSession
 ) -> Contact | None:
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
 
     if not contact:
         return None
 
-    existing_email = (
-        db.query(Contact)
-        .filter(Contact.email == str(body.email), Contact.id != contact_id)
-        .first()
+    result2 = await db.execute(
+        select(Contact).where(
+            and_(Contact.email == str(body.email), Contact.id != contact_id)
+        )
     )
+    existing_email = result2.scalar_one_or_none()
 
     if existing_email:
         raise HTTPException(
@@ -66,25 +72,27 @@ async def update_contact(
     contact.date_of_birth = body.date_of_birth
     contact.additional_info = body.additional_info
 
-    db.commit()
-    db.refresh(contact)
+    await db.commit()
+    await db.refresh(contact)
 
     return contact
 
 
 async def update_email_contact(
-    body: ContactEmailUpdate, contact_id: int, db: Session
+    body: ContactEmailUpdate, contact_id: int, db: AsyncSession
 ) -> Contact | None:
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
 
     if not contact:
         return None
 
-    existing_email = (
-        db.query(Contact)
-        .filter(Contact.email == str(body.email), Contact.id != contact_id)
-        .first()
+    result2 = await db.execute(
+        select(Contact).where(
+            and_(Contact.email == str(body.email), Contact.id != contact_id)
+        )
     )
+    existing_email = result2.scalar_one_or_none()
 
     if existing_email:
         raise HTTPException(
@@ -93,36 +101,37 @@ async def update_email_contact(
 
     contact.email = str(body.email)
 
-    db.commit()
-    db.refresh(contact)
+    await db.commit()
+    await db.refresh(contact)
 
     return contact
 
 
-async def delete_contact(contact_id: int, db: Session) -> Contact | None:
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+async def delete_contact(contact_id: int, db: AsyncSession) -> Contact | None:
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
 
     if contact:
-        db.delete(contact)
-        db.commit()
+        await db.delete(contact)
+        await db.commit()
 
     return contact
 
 
 async def search_contact(
-    first_name: str, last_name: str, email: str, db: Session
+    first_name: str, last_name: str, email: str, db: AsyncSession
 ) -> list[Contact]:
-    query = db.query(Contact)
-    filters = []
+    stmt = select(Contact)
 
     if first_name:
-        filters.append(Contact.first_name == first_name)
+        stmt = stmt.where(Contact.first_name == first_name)
     if last_name:
-        filters.append(Contact.last_name == last_name)
+        stmt = stmt.where(Contact.last_name == last_name)
     if email:
-        filters.append(Contact.email == email)
+        stmt = stmt.where(Contact.email == email)
 
-    return query.filter(and_(*filters)).all() if filters else []
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 def helpful_func(my_date, next_date):
@@ -148,13 +157,13 @@ def helpful_func(my_date, next_date):
         return next_date_leap in next_7_days
 
 
-async def find_next_birthdays_in_7_days(db: Session) -> list[Contact]:
+async def find_next_birthdays_in_7_days(db: AsyncSession) -> list[Contact]:
     today_date = date.today()
-    all_contacts = db.query(Contact).all()
-    contacts = []
+    result = await db.execute(select(Contact))
+    all_contacts = list(result.scalars().all())
 
-    for contact in all_contacts:
-        if helpful_func(today_date, contact.date_of_birth):
-            contacts.append(contact)
-
-    return contacts
+    return [
+        contact
+        for contact in all_contacts
+        if helpful_func(today_date, contact.date_of_birth)
+    ]
