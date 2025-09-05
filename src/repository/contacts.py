@@ -4,50 +4,103 @@ from datetime import date, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from src.db.models import Contact
-from src.schemas.contact_schemas import ContactCreate, ContactEmailUpdate, ContactUpdate
+from src.db.models import Contact, User
+from src.schemas.contact_schemas import (ContactCreate, ContactEmailUpdate,
+                                         ContactResponse, ContactUpdate)
 
 
-async def create_contact(body: ContactCreate, db: AsyncSession) -> Contact:
-    result = await db.execute(select(Contact).where(Contact.email == str(body.email)))
-    existing_email = result.scalar_one_or_none()
+async def create_contact(body: ContactCreate, user: User, db: AsyncSession) -> Contact:
+    """
+    [ПРИЙМАЄ] -> body: ContactCreate це є тілом запиту (валідується відповідною Pydantic-схемою)
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact
+    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому додається створений новий об'єкт Контакту. + повернення
+    [ПРИМІТКА] -> Можливий виняток HTTPException якщо емеіл вже існує в БД
+    """
+    result = await db.execute(
+        select(Contact).where(
+            and_(Contact.email == str(body.email), Contact.user_id == user.id)
+        )
+    )
+    existing = result.scalar_one_or_none()
 
-    if existing_email:
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already existing"
         )
 
-    contact = Contact(
-        first_name=body.first_name,
-        last_name=body.last_name,
-        email=str(body.email),
-        phone_number=body.phone_number,
-        date_of_birth=body.date_of_birth,
-        additional_info=body.additional_info,
-    )
-
+    contact = Contact(**body.model_dump(), user_id=user.id)
     db.add(contact)
     await db.commit()
     await db.refresh(contact)
-    return contact
+
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(Contact.id == contact.id)
+    )
+
+    return result.scalar_one()
 
 
-async def read_contacts(skip: int, limit: int, db: AsyncSession) -> list[Contact]:
-    result = await db.execute(select(Contact).offset(skip).limit(limit))
+async def read_contacts(
+    skip: int, limit: int, user: User, db: AsyncSession
+) -> list[Contact]:
+    """
+    [ПРИЙМАЄ] -> skip: int це щоб показати скільки контактів пропустити від початку,
+                 limit: int це щоб покакати скільки контактів відобразити
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> list[Contact] список контактів або пустий список
+    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому читаються контакти відповідного user. + повернення
+    """
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(Contact.user_id == user.id)
+        .offset(skip)
+        .limit(limit)
+    )
     contacts = list(result.scalars().all())
     return contacts
 
 
-async def read_contact(contact_id: int, db: AsyncSession) -> Contact | None:
-    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+async def read_contact(contact_id: int, user: User, db: AsyncSession) -> Contact | None:
+    """
+    [ПРИЙМАЄ] -> contact_id: int це ідентифікатор конкретного контакту,
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> Contact | None це повернення або контакту або None(якщо не існує)
+    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому читається контакт відповідного user. + повернення
+    """
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(and_(Contact.id == contact_id, Contact.user_id == user.id))
+    )
     return result.scalar_one_or_none()
 
 
 async def update_contact(
-    body: ContactUpdate, contact_id: int, db: AsyncSession
+    body: ContactUpdate, contact_id: int, user: User, db: AsyncSession
 ) -> Contact | None:
-    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    """
+    [ПРИЙМАЄ] -> body: ContactUpdate це є тілом запиту (валідується відповідною Pydantic-схемою)
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact або None (якщо контакту не існує)
+    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому спершу первіряється наявність контакту, потім унікальність
+                меілу, а потім змінюється об'єкт Контакту. + повернення
+    [ПРИМІТКА] -> Можливий виняток HTTPException якщо емеіл (на який ми хочемо змінити) вже існує в БД
+    """
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(and_(Contact.id == contact_id, Contact.user_id == user.id))
+    )
     contact = result.scalar_one_or_none()
 
     if not contact:
@@ -55,7 +108,11 @@ async def update_contact(
 
     result2 = await db.execute(
         select(Contact).where(
-            and_(Contact.email == str(body.email), Contact.id != contact_id)
+            and_(
+                Contact.email == str(body.email),
+                Contact.id != contact_id,
+                Contact.user_id == user.id,
+            )
         )
     )
     existing_email = result2.scalar_one_or_none()
@@ -79,9 +136,24 @@ async def update_contact(
 
 
 async def update_email_contact(
-    body: ContactEmailUpdate, contact_id: int, db: AsyncSession
+    body: ContactEmailUpdate, contact_id: int, user: User, db: AsyncSession
 ) -> Contact | None:
-    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    """
+    [ПРИЙМАЄ] -> body: ContactEmailUpdate це є тілом запиту (валідується відповідною Pydantic-схемою)
+                 contact_id: int це ідентифікатор конкретного контакту
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact або None (якщо контакту не існує)
+    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому спершу перевіряється наявність контакту,
+                потім перевіряється унікальність нового email у рамках користувача,
+                а потім змінюється поле email. + повернення
+    [ПРИМІТКА] -> Можливий виняток HTTPException якщо email (на який ми хочемо змінити) вже існує в БД
+    """
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(and_(Contact.id == contact_id, Contact.user_id == user.id))
+    )
     contact = result.scalar_one_or_none()
 
     if not contact:
@@ -89,7 +161,11 @@ async def update_email_contact(
 
     result2 = await db.execute(
         select(Contact).where(
-            and_(Contact.email == str(body.email), Contact.id != contact_id)
+            and_(
+                Contact.email == str(body.email),
+                Contact.id != contact_id,
+                Contact.user_id == user.id,
+            )
         )
     )
     existing_email = result2.scalar_one_or_none()
@@ -107,21 +183,52 @@ async def update_email_contact(
     return contact
 
 
-async def delete_contact(contact_id: int, db: AsyncSession) -> Contact | None:
-    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+async def delete_contact(
+    contact_id: int, user: User, db: AsyncSession
+) -> ContactResponse | None:
+    """
+    [ПРИЙМАЄ] -> contact_id: int це ідентифікатор конкретного контакту
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact або None (якщо контакту не існує)
+    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому спершу перевіряється наявність контакту,
+                а потім, якщо він існує, видаляється об'єкт Контакту. + повернення
+    """
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(and_(Contact.id == contact_id, Contact.user_id == user.id))
+    )
     contact = result.scalar_one_or_none()
 
-    if contact:
-        await db.delete(contact)
-        await db.commit()
+    if not contact:
+        return None
 
-    return contact
+    contact_response = ContactResponse.model_validate(contact)
+
+    await db.delete(contact)
+    await db.commit()
+
+    return contact_response
 
 
 async def search_contact(
-    first_name: str, last_name: str, email: str, db: AsyncSession
+    first_name: str, last_name: str, email: str, user: User, db: AsyncSession
 ) -> list[Contact]:
-    stmt = select(Contact)
+    """
+    [ПРИЙМАЄ] -> first_name: str ім'я для пошуку (може бути порожнім)
+                 last_name: str прізвище для пошуку (може бути порожнім)
+                 email: str email для пошуку (може бути порожнім)
+                 user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> список Contact, що відповідають умовам пошуку, або пустий список
+    [ЛОГІКА] -> Виконується асинхронний запит до БД з фільтрацією по переданих аргументах. + повернення
+    """
+    stmt = (
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(Contact.user_id == user.id)
+    )
 
     if first_name:
         stmt = stmt.where(Contact.first_name == first_name)
@@ -157,9 +264,20 @@ def helpful_func(my_date, next_date):
         return next_date_leap in next_7_days
 
 
-async def find_next_birthdays_in_7_days(db: AsyncSession) -> list[Contact]:
+async def find_next_birthdays_in_7_days(user: User, db: AsyncSession) -> list[Contact]:
+    """
+    [ПРИЙМАЄ] -> user: User це екземпляр класу User, тобто той кому належать контакти
+                 db: AsyncSession це об'єкт асинхронного підключення до БД
+    [ПОВЕРТАЄ] -> список Contact, що мають день народження протягом наступних 7 днів, або пустий список
+    [ЛОГІКА] -> Виконується асинхронний запит до БД для отримання всіх контактів конкретного user,
+                потім за допомогою допоміжної функції helpful_func фільтруються контакти за датою народження.+повернення
+    """
     today_date = date.today()
-    result = await db.execute(select(Contact))
+    result = await db.execute(
+        select(Contact)
+        .options(selectinload(Contact.user))
+        .where(Contact.user_id == user.id)
+    )
     all_contacts = list(result.scalars().all())
 
     return [

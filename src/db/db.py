@@ -1,28 +1,26 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
+                                    async_sessionmaker, create_async_engine)
 
 load_dotenv()
 
-POSTGRES_USER = os.getenv("POSTGRES_USER")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-POSTGRES_DB = os.getenv("POSTGRES_DB")
-PORT_DB = os.getenv("PORT_DB")
-HOST_DB = os.getenv("HOST_DB")
 
+class Database:
+    POSTGRES_USER = os.getenv("POSTGRES_USER")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+    POSTGRES_DB = os.getenv("POSTGRES_DB")
+    PORT_DB = os.getenv("PORT_DB")
+    HOST_DB = os.getenv("HOST_DB")
+    DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{HOST_DB}:{PORT_DB}/{POSTGRES_DB}"
 
-SQLALCHEMY_DATABASE_URL = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{HOST_DB}:{PORT_DB}/{POSTGRES_DB}"
+    def __init__(self):
+        self.engine: AsyncEngine = create_async_engine(self.DATABASE_URL)
+        self.async_session_maker: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            bind=self.engine, autoflush=False
+        )
 
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine, autoflush=False)
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async def get_db(self):
+        async with self.async_session_maker() as session:
+            yield session
