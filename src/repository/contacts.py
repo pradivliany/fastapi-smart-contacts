@@ -17,12 +17,18 @@ from src.schemas.contact_schemas import (
 
 async def create_contact(body: ContactCreate, user: User, db: AsyncSession) -> Contact:
     """
-    [ПРИЙМАЄ] -> body: ContactCreate це є тілом запиту (валідується відповідною Pydantic-схемою)
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact
-    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому додається створений новий об'єкт Контакту. + повернення
-    [ПРИМІТКА] -> Можливий виняток HTTPException якщо емеіл вже існує в БД
+    Create a new contact for the authenticated user.
+
+    Args:
+        body (ContactCreate): Contact data validated by Pydantic schema.
+        user (User): Current authenticated user -> contact owner.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        Contact: Created contact ORM object with related user loaded.
+
+    Raises:
+        HTTPException: If a contact with the same email already exists for the user.
     """
     result = await db.execute(
         select(Contact).where(
@@ -54,12 +60,16 @@ async def read_contacts(
     skip: int, limit: int, user: User, db: AsyncSession
 ) -> list[Contact]:
     """
-    [ПРИЙМАЄ] -> skip: int це щоб показати скільки контактів пропустити від початку,
-                 limit: int це щоб покакати скільки контактів відобразити
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> list[Contact] список контактів або пустий список
-    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому читаються контакти відповідного user. + повернення
+    Retrieve a paginated list of contacts for the authenticated user.
+
+    Args:
+        skip (int): Number of contacts to skip (offset).
+        limit (int): Maximum number of contacts to return.
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        list[Contact]: List of user's contacts. Empty if no contacts.
     """
     result = await db.execute(
         select(Contact)
@@ -74,11 +84,15 @@ async def read_contacts(
 
 async def read_contact(contact_id: int, user: User, db: AsyncSession) -> Contact | None:
     """
-    [ПРИЙМАЄ] -> contact_id: int це ідентифікатор конкретного контакту,
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Contact | None це повернення або контакту або None(якщо не існує)
-    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому читається контакт відповідного user. + повернення
+    Retrieve a single contact by ID for the authenticated user.
+
+    Args:
+        contact_id (int): ID of the contact to retrieve.
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        Contact | None: Contact if found and owned by the user, otherwise None.
     """
     result = await db.execute(
         select(Contact)
@@ -92,13 +106,19 @@ async def update_contact(
     body: ContactUpdate, contact_id: int, user: User, db: AsyncSession
 ) -> Contact | None:
     """
-    [ПРИЙМАЄ] -> body: ContactUpdate це є тілом запиту (валідується відповідною Pydantic-схемою)
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact або None (якщо контакту не існує)
-    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому спершу первіряється наявність контакту, потім унікальність
-                меілу, а потім змінюється об'єкт Контакту. + повернення
-    [ПРИМІТКА] -> Можливий виняток HTTPException якщо емеіл (на який ми хочемо змінити) вже існує в БД
+    Update an existing contact owned by the authenticated user.
+
+    Args:
+        body (ContactUpdate): Updated contact data validated by Pydantic schema.
+        contact_id (int): ID of the contact to update.
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        Contact | None: Updated contact if found and owned by the user, otherwise None.
+
+    Raises:
+        HTTPException: 409 Conflict if the provided email is already in use.
     """
     result = await db.execute(
         select(Contact)
@@ -143,15 +163,19 @@ async def update_email_contact(
     body: ContactEmailUpdate, contact_id: int, user: User, db: AsyncSession
 ) -> Contact | None:
     """
-    [ПРИЙМАЄ] -> body: ContactEmailUpdate це є тілом запиту (валідується відповідною Pydantic-схемою)
-                 contact_id: int це ідентифікатор конкретного контакту
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact або None (якщо контакту не існує)
-    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому спершу перевіряється наявність контакту,
-                потім перевіряється унікальність нового email у рамках користувача,
-                а потім змінюється поле email. + повернення
-    [ПРИМІТКА] -> Можливий виняток HTTPException якщо email (на який ми хочемо змінити) вже існує в БД
+    Update the email address of an existing contact owned by the authenticated user.
+
+    Args:
+        body (ContactEmailUpdate): New email data validated by Pydantic schema.
+        contact_id (int): ID of the contact to update.
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        Contact | None: Updated contact if found and owned by the user, otherwise None.
+
+    Raises:
+        HTTPException: 409 Conflict if the provided email is already in use.
     """
     result = await db.execute(
         select(Contact)
@@ -191,12 +215,15 @@ async def delete_contact(
     contact_id: int, user: User, db: AsyncSession
 ) -> ContactResponse | None:
     """
-    [ПРИЙМАЄ] -> contact_id: int це ідентифікатор конкретного контакту
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ Contact або None (якщо контакту не існує)
-    [ЛОГІКА] -> Виконується асинхронний запит до БД в якому спершу перевіряється наявність контакту,
-                а потім, якщо він існує, видаляється об'єкт Контакту. + повернення
+    Delete an existing contact owned by the authenticated user.
+
+    Args:
+        contact_id (int): ID of the contact to delete.
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        ContactResponse | None: Deleted contact data if found and deleted, otherwise None.
     """
     result = await db.execute(
         select(Contact)
@@ -220,13 +247,17 @@ async def search_contact(
     first_name: str, last_name: str, email: str, user: User, db: AsyncSession
 ) -> list[Contact]:
     """
-    [ПРИЙМАЄ] -> first_name: str ім'я для пошуку (може бути порожнім)
-                 last_name: str прізвище для пошуку (може бути порожнім)
-                 email: str email для пошуку (може бути порожнім)
-                 user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> список Contact, що відповідають умовам пошуку, або пустий список
-    [ЛОГІКА] -> Виконується асинхронний запит до БД з фільтрацією по переданих аргументах. + повернення
+    Search for contacts owned by the authenticated user using optional filters.
+
+    Args:
+        first_name (str): First name to filter by (optional).
+        last_name (str): Last name to filter by (optional).
+        email (str): Email to filter by (optional).
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        list[Contact]: List of contacts matching the filters. Empty list if none found.
     """
     stmt = (
         select(Contact)
@@ -245,18 +276,28 @@ async def search_contact(
     return list(result.scalars().all())
 
 
-def helpful_func(my_date, next_date):
+def helpful_func(my_date: date, next_date: date) -> bool:
+    """
+    Check if 'next_date' falls within 7 days after `my_date`, accounting for year boundaries.
+
+    Args:
+        my_date (date): Reference date.
+        next_date (date): Date to check against the 7-day window.
+
+    Returns:
+        bool: True if `next_date` is within 7 days after `my_date`, False otherwise.
+    """
     month1_date1_tuple = (my_date.month, my_date.day)
     base_year = 2020 if calendar.isleap(my_date.year) else 2021
 
-    # Якщо дата до 24-го грудня (включно)
+    # If the date is before December 25th (<25)
     if month1_date1_tuple < (12, 25):
         my_date_leap = date(year=base_year, month=my_date.month, day=my_date.day)
         next_date_leap = date(year=base_year, month=next_date.month, day=next_date.day)
         difference = next_date_leap.toordinal() - my_date_leap.toordinal()
         return 1 <= difference <= 7
 
-    # якщо після 25-го грудня (включно)
+    # If the date is on or after December 25th
     else:
         my_date_leap = date(year=base_year, month=my_date.month, day=my_date.day)
         next_7_days = [my_date_leap + timedelta(days=i) for i in range(1, 8)]
@@ -270,11 +311,14 @@ def helpful_func(my_date, next_date):
 
 async def find_next_birthdays_in_7_days(user: User, db: AsyncSession) -> list[Contact]:
     """
-    [ПРИЙМАЄ] -> user: User це екземпляр класу User, тобто той кому належать контакти
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> список Contact, що мають день народження протягом наступних 7 днів, або пустий список
-    [ЛОГІКА] -> Виконується асинхронний запит до БД для отримання всіх контактів конкретного user,
-                потім за допомогою допоміжної функції helpful_func фільтруються контакти за датою народження.+повернення
+    Find contacts of the authenticated user whose birthdays occur within the next 7 days.
+
+    Args:
+        user (User): Current authenticated user.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        list[Contact]: List of contacts with birthdays in the next 7 days. Empty list if none found.
     """
     today_date = date.today()
     result = await db.execute(
