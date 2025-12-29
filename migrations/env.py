@@ -6,7 +6,10 @@ from sqlalchemy import engine_from_config, pool
 from src.db.db import Database
 from src.db.models import Base
 
-SYNC_DATABASE_URL = f"postgresql+psycopg2://{Database.POSTGRES_USER}:{Database.POSTGRES_PASSWORD}@{Database.HOST_DB}:{Database.PORT_DB}/{Database.POSTGRES_DB}"
+SYNC_DATABASE_URL = (
+    f"postgresql+psycopg2://{Database.POSTGRES_USER}:{Database.POSTGRES_PASSWORD}@"
+    f"{Database.POSTGRES_HOST}:{Database.POSTGRES_PORT}/{Database.POSTGRES_DB}"
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
