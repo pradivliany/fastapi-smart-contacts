@@ -4,8 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.db import Database
 from src.db.models import User
 from src.repository import contacts as repository_contacts
-from src.schemas.contact_schemas import (ContactCreate, ContactEmailUpdate,
-                                         ContactResponse, ContactUpdate)
+from src.schemas.contact_schemas import (
+    ContactCreate,
+    ContactEmailUpdate,
+    ContactResponse,
+    ContactUpdate,
+)
 from src.services.auth import auth_service
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])

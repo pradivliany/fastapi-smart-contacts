@@ -7,8 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.db.models import Contact, User
-from src.schemas.contact_schemas import (ContactCreate, ContactEmailUpdate,
-                                         ContactResponse, ContactUpdate)
+from src.schemas.contact_schemas import (
+    ContactCreate,
+    ContactEmailUpdate,
+    ContactResponse,
+    ContactUpdate,
+)
 
 
 async def create_contact(body: ContactCreate, user: User, db: AsyncSession) -> Contact:
