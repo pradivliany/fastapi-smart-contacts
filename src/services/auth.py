@@ -1,5 +1,7 @@
+import os
 from datetime import datetime, timedelta, timezone
 
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -10,13 +12,14 @@ from src.db.db import Database
 from src.repository import users as repository_users
 
 database = Database()
+load_dotenv()
 
 
 class Auth:
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    SECRET_KEY = "super_secret_key"
-    ALGORITHM = "HS256"
-    oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+    SECRET_KEY = os.getenv("SECRET_KEY", "super_secret_key")
+    ALGORITHM = os.getenv("ALGORITHM", "HS256")
+    oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
     def verify_password(self, plain_password, hashed_password):
         return self.pwd_context.verify(plain_password, hashed_password)
