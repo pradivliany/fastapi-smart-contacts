@@ -7,10 +7,14 @@ from src.schemas.user_schemas import UserCreate
 
 async def get_user_by_email(email: str, db: AsyncSession) -> User | None:
     """
-    [ПРИЙМАЄ] -> email: str це email користувача, що шукаємо
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ User або None, якщо користувача з таким email не знайдено
-    [ЛОГІКА] -> Виконується асинхронний запит до БД з фільтром по email, повертається перший знайдений об'єкт
+    Retrieve a user by their email address.
+
+    Args:
+        email (str): Email of the user to search for.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        User | None: User object if found, otherwise None.
     """
     result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
@@ -18,10 +22,14 @@ async def get_user_by_email(email: str, db: AsyncSession) -> User | None:
 
 async def create_user(body: UserCreate, db: AsyncSession) -> User:
     """
-    [ПРИЙМАЄ] -> body: UserCreate це дані для створення нового користувача (валідуються Pydantic-схемою)
-                 db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> Об'єкт моделі ОРМ User після збереження у БД
-    [ЛОГІКА] -> Створюємо новий об'єкт User з даних body, додаємо його в сесію, комітимо і оновлюємо стан об'єкта
+    Create a new user in the database.
+
+    Args:
+        body (UserCreate): Data for creating a new user, validated by Pydantic schema.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        User: Newly created User object after being saved in the database.
     """
     new_user = User(**body.model_dump())
     db.add(new_user)
@@ -32,11 +40,15 @@ async def create_user(body: UserCreate, db: AsyncSession) -> User:
 
 async def update_refresh_token(user: User, token: str | None, db: AsyncSession) -> None:
     """
-    [ПРИЙМАЄ] -> user: User це об'єкт користувача, у якого оновлюємо токен
-                token: str | None це новий refresh_token або None
-                db: AsyncSession це об'єкт асинхронного підключення до БД
-    [ПОВЕРТАЄ] -> None
-    [ЛОГІКА] -> Присвоюємо переданий token у поле refresh_token користувача та комітимо зміни в БД
+    Update the refresh token for a given user.
+
+    Args:
+        user (User): User object whose refresh token will be updated.
+        token (str | None): New refresh token or None to clear it.
+        db (AsyncSession): Asynchronous database session.
+
+    Returns:
+        None
     """
     user.refresh_token = token
     await db.commit()
